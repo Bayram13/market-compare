@@ -4,58 +4,86 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-def scrape_bazarstore(product_name):
-    url = f"https://bazarstore.az/search?q={product_name}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+# =====================
+# OBA Market Scraper
+# =====================
+def scrape_oba(product_name):
+    try:
+        url = f"https://oba.az/products/?search={product_name}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+    except Exception:
+        return []
 
     results = []
-    for item in soup.select(".product-block"):
-        name_tag = item.select_one(".product-title")
-        price_tag = item.select_one(".price")
-        link_tag = item.select_one("a")
+    for item in soup.select(".product-item"):  # OBA məhsul kartları
+        try:
+            name_tag = item.select_one(".product-title")
+            price_tag = item.select_one(".price-current")
+            link_tag = item.select_one("a")
 
-        if name_tag and price_tag:
-            try:
-                price = float(price_tag.get_text(strip=True).replace("₼", "").strip())
-                link = "https://bazarstore.az" + link_tag["href"] if link_tag else "#"
-                results.append({
-                    "market": "Bazarstore",
-                    "name": name_tag.get_text(strip=True),
-                    "price": price,
-                    "link": link
-                })
-            except:
-                pass
+            if not name_tag or not price_tag:
+                continue
+
+            price_text = price_tag.get_text(strip=True).replace("₼", "").strip()
+            price = float(price_text.replace(",", "."))
+            link = "https://oba.az" + link_tag["href"] if link_tag else "#"
+
+            results.append({
+                "market": "OBA Market",
+                "name": name_tag.get_text(strip=True),
+                "price": price,
+                "link": link
+            })
+        except:
+            pass
     return results
 
-def scrape_bravo(product_name):
-    url = f"https://bravo.az/search?q={product_name}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+
+# =====================
+# Neptun Market Scraper
+# =====================
+def scrape_neptun(product_name):
+    try:
+        url = f"https://neptun.az/search?search={product_name}&submit_search=&route=product%2Fsearch"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+    except Exception:
+        return []
 
     results = []
-    for item in soup.select(".product-item"):
-        name_tag = item.select_one(".product-title")
-        price_tag = item.select_one(".product-price")
-        link_tag = item.select_one("a")
+    for item in soup.select(".product-layout"):  # Neptun məhsul kartları
+        try:
+            name_tag = item.select_one(".caption a")
+            price_tag = item.select_one(".price")
+            link_tag = item.select_one(".caption a")
 
-        if name_tag and price_tag:
-            try:
-                price = float(price_tag.get_text(strip=True).replace("₼", "").strip())
-                link = "https://bravo.az" + link_tag["href"] if link_tag else "#"
-                results.append({
-                    "market": "Bravo",
-                    "name": name_tag.get_text(strip=True),
-                    "price": price,
-                    "link": link
-                })
-            except:
-                pass
+            if not name_tag or not price_tag:
+                continue
+
+            # Qiyməti təmizləyirik
+            price_text = price_tag.get_text(strip=True).replace("₼", "").strip()
+            price = float(price_text.replace(",", "."))
+            link = link_tag["href"] if link_tag else "#"
+
+            results.append({
+                "market": "Neptun Market",
+                "name": name_tag.get_text(strip=True),
+                "price": price,
+                "link": link
+            })
+        except:
+            pass
     return results
 
+
+# =====================
+# Web interfeys
+# =====================
 @app.route("/", methods=["GET", "POST"])
 def home():
     results = []
@@ -64,11 +92,12 @@ def home():
     if request.method == "POST":
         query = request.form.get("product")
         if query:
-            results.extend(scrape_bazarstore(query))
-            results.extend(scrape_bravo(query))
+            results.extend(scrape_oba(query))
+            results.extend(scrape_neptun(query))
             results = sorted(results, key=lambda x: x["price"])
 
     return render_template("index.html", results=results, query=query)
 
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
